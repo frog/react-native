@@ -31,7 +31,7 @@ const warning = require('fbjs/lib/warning');
 
 const {computeWindowedRenderLimits} = require('VirtualizeUtils');
 
-import type {DangerouslyImpreciseStyleProp, ViewStyleProp} from 'StyleSheet';
+import type {DangerouslyImpreciseStyleProp} from 'StyleSheet';
 import type {
   ViewabilityConfig,
   ViewToken,
@@ -125,18 +125,10 @@ type OptionalProps = {
    */
   ListFooterComponent?: ?(React.ComponentType<any> | React.Element<any>),
   /**
-   * Styling for internal View for ListFooterComponent
-   */
-  ListFooterComponentStyle?: ViewStyleProp,
-  /**
    * Rendered at the top of all the items. Can be a React Component Class, a render function, or
    * a rendered element.
    */
   ListHeaderComponent?: ?(React.ComponentType<any> | React.Element<any>),
-  /**
-   * Styling for internal View for ListHeaderComponent
-   */
-  ListHeaderComponentStyle?: ViewStyleProp,
   /**
    * A unique identifier for this list. If there are multiple VirtualizedLists at the same level of
    * nesting within another VirtualizedList, this key is necessary for virtualization to
@@ -329,12 +321,17 @@ class VirtualizedList extends React.PureComponent<Props, State> {
       return;
     }
     const frame = this._getFrameMetricsApprox(index);
+
+    const maxOffset = Math.max(0, this._scrollMetrics.contentLength - this._scrollMetrics.visibleLength);
     const offset =
       Math.max(
         0,
-        frame.offset -
-          (viewPosition || 0) *
-            (this._scrollMetrics.visibleLength - frame.length),
+        Math.min(
+          maxOffset,
+          frame.offset -
+            (viewPosition || 0) *
+              (this._scrollMetrics.visibleLength - frame.length),
+        )
       ) - (viewOffset || 0);
     /* $FlowFixMe(>=0.53.0 site=react_native_fb,react_native_oss) This comment
      * suppresses an error when upgrading Flow's support for React. To see the
@@ -764,12 +761,7 @@ class VirtualizedList extends React.PureComponent<Props, State> {
         <VirtualizedCellWrapper
           cellKey={this._getCellKey() + '-header'}
           key="$header">
-          <View
-            onLayout={this._onLayoutHeader}
-            style={StyleSheet.compose(
-              inversionStyle,
-              this.props.ListHeaderComponentStyle,
-            )}>
+          <View onLayout={this._onLayoutHeader} style={inversionStyle}>
             {
               // $FlowFixMe - Typing ReactNativeComponent revealed errors
               element
@@ -805,7 +797,8 @@ class VirtualizedList extends React.PureComponent<Props, State> {
             if (stickyIndicesFromProps.has(ii + stickyOffset)) {
               const initBlock = this._getFrameMetricsApprox(lastInitialIndex);
               const stickyBlock = this._getFrameMetricsApprox(ii);
-              const leadSpace = stickyBlock.offset - initBlock.offset;
+              const leadSpace =
+                stickyBlock.offset - (initBlock.offset + initBlock.length);
               cells.push(
                 <View key="$sticky_lead" style={{[spacerKey]: leadSpace}} />,
               );
@@ -904,12 +897,7 @@ class VirtualizedList extends React.PureComponent<Props, State> {
         <VirtualizedCellWrapper
           cellKey={this._getCellKey() + '-footer'}
           key="$footer">
-          <View
-            onLayout={this._onLayoutFooter}
-            style={StyleSheet.compose(
-              inversionStyle,
-              this.props.ListFooterComponentStyle,
-            )}>
+          <View onLayout={this._onLayoutFooter} style={inversionStyle}>
             {
               // $FlowFixMe - Typing ReactNativeComponent revealed errors
               element
@@ -1234,7 +1222,9 @@ class VirtualizedList extends React.PureComponent<Props, State> {
   }
 
   _selectOffset(metrics: $ReadOnly<{x: number, y: number}>): number {
-    return !this.props.horizontal ? metrics.y : metrics.x;
+    return (
+      (!this.props.horizontal ? metrics.y : metrics.x) - this._headerLength
+    );
   }
 
   _maybeCallOnEndReached() {
